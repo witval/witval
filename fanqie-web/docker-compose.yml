@@ -1,0 +1,15 @@
+# 番茄小说下载器（网页版）—— 群晖部署
+# 纯网页服务，不需要虚拟桌面。第一次需要构建镜像（约 3~5 分钟），之后启动只要几秒。
+services:
+  fanqie-web:
+    build: .
+    image: fanqie-web:latest
+    container_name: fanqie-web
+    ports:
+      - "8084:8084"                                    # 浏览器访问 http://群晖IP:8084/
+    volumes:
+      - /volume1/docker/fanqie-web/data:/data          # 设置、访问密码、章节缓存、字体识别结果
+      - /volume2/downloads/小说:/downloads             # 小说下载目录（NAS 上的这个文件夹）
+    environment:
+      - TZ=Asia/Shanghai
+    restart: unless-stopped

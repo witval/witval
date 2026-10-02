@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>番茄小说下载器</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { min-height: 100%; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; }
+  body { background: #16181d; color: #e8eaed; }
+  .topbar { display: flex; align-items: center; gap: 6px; padding: 0 20px; background: #22252c;
+    border-bottom: 1px solid #33363e; position: sticky; top: 0; z-index: 10; overflow-x: auto; }
+  .brand { font-size: 16px; font-weight: 700; margin-right: 18px; padding: 12px 0; white-space: nowrap; }
+  .brand b { color: #ff6b3d; }
+  .tab { padding: 14px 16px; cursor: pointer; font-size: 14px; color: #9aa0a6; white-space: nowrap;
+    border-bottom: 2px solid transparent; user-select: none; }
+  .tab.active { color: #fff; border-bottom-color: #ff6b3d; }
+  .tab .badge { background: #ff6b3d; color: #fff; border-radius: 9px; padding: 0 6px; font-size: 11px; margin-left: 4px; }
+  .spacer { flex: 1; }
+  .container { max-width: 1000px; margin: 0 auto; padding: 20px 16px; }
+  .panel { display: none; } .panel.active { display: block; }
+  button { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;
+    font-weight: 500; white-space: nowrap; transition: background .15s; }
+  .primary { background: #ff6b3d; color: #fff; } .primary:hover { background: #e85d31; }
+  .ghost { background: #3a3d45; color: #e8eaed; } .ghost:hover { background: #474b54; }
+  .small { padding: 5px 10px; font-size: 12px; }
+  .danger { background: #5a2a2a; color: #ffb4b4; } .danger:hover { background: #6d3333; }
+  button:disabled { background: #555a63 !important; color: #bbb; cursor: not-allowed; }
+  input, select, textarea { background: #22252c; color: #e8eaed; border: 1px solid #44474f;
+    border-radius: 8px; padding: 10px 12px; font-size: 14px; font-family: inherit; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: #ff6b3d; }
+  .row { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .row input[type=text] { flex: 1; min-width: 200px; }
+  .muted { color: #9aa0a6; font-size: 13px; }
+  .err { color: #ff8a80; }
+  .ok { color: #81c995; }
+
+  .books { display: grid; gap: 12px; }
+  .book { display: flex; gap: 14px; background: #1d2026; border: 1px solid #2a2d34; border-radius: 10px; padding: 12px; cursor: pointer; }
+  .book:hover { border-color: #ff6b3d; }
+  .book img, .cover-ph { width: 72px; height: 96px; border-radius: 6px; object-fit: cover; background: #33363e; flex-shrink: 0; }
+  .book .t { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .book .m { font-size: 12px; color: #9aa0a6; margin-bottom: 6px; }
+  .book .a { font-size: 13px; color: #c4c7cc; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .tag { display: inline-block; font-size: 11px; border: 1px solid #555a63; border-radius: 4px; padding: 0 5px; margin-right: 4px; color: #c4c7cc; }
+
+  .task { background: #1d2026; border: 1px solid #2a2d34; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+  .task .head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .task .name { font-weight: 600; flex: 1; min-width: 160px; }
+  .bar { height: 6px; background: #33363e; border-radius: 3px; margin: 10px 0 6px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: #ff6b3d; transition: width .3s; }
+  .st { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #33363e; }
+  .st.完成 { background: #1e4620; color: #81c995; } .st.失败 { background: #5a2a2a; color: #ffb4b4; }
+  .st.部分完成 { background: #4a3b16; color: #fdd663; } .st.下载中, .st.导出中 { background: #4a2a1d; color: #ffab91; }
+  details { margin-top: 6px; font-size: 12px; color: #9aa0a6; }
+  details div { padding: 2px 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; color: #9aa0a6; font-weight: 500; font-size: 12px; padding: 8px 10px; border-bottom: 1px solid #33363e; }
+  td { padding: 9px 10px; border-bottom: 1px solid #26292f; word-break: break-all; }
+  a { color: #8ab4f8; text-decoration: none; }
+
+  .card { background: #1d2026; border: 1px solid #2a2d34; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .card h3 { font-size: 15px; margin-bottom: 10px; }
+  .card label { display: block; font-size: 13px; color: #c4c7cc; margin: 10px 0 6px; }
+  .card textarea { width: 100%; min-height: 80px; font-size: 12px; }
+
+  .mask { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; z-index: 50; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 30px 12px; }
+  .mask.show { display: flex; }
+  .modal { background: #22252c; border-radius: 12px; width: 100%; max-width: 760px; padding: 20px; position: relative; }
+  .modal .close { position: absolute; right: 12px; top: 10px; background: none; color: #9aa0a6; font-size: 22px; padding: 4px 8px; }
+  .detail-head { display: flex; gap: 16px; margin-bottom: 14px; }
+  .detail-head img, .detail-head .cover-ph { width: 96px; height: 128px; }
+  .abstract { font-size: 13px; color: #c4c7cc; line-height: 1.7; max-height: 120px; overflow-y: auto; margin-bottom: 14px; white-space: pre-wrap; }
+  .chapters { max-height: 300px; overflow-y: auto; border: 1px solid #33363e; border-radius: 8px; font-size: 13px; }
+  .chapters div { padding: 7px 10px; border-bottom: 1px solid #2a2d34; display: flex; gap: 8px; align-items: center; }
+  .chapters div span.n { color: #6f747c; width: 46px; flex-shrink: 0; }
+  .chapters div span.ti { flex: 1; }
+  .chapters .vol { background: #1d2026; color: #ffab91; font-size: 12px; }
+  .reader { white-space: pre-wrap; line-height: 1.9; font-size: 15px; max-height: 60vh; overflow-y: auto; background: #1d2026; padding: 14px; border-radius: 8px; }
+  .num { width: 90px; }
+  #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #33363e; padding: 10px 18px; border-radius: 8px; font-size: 14px; display: none; z-index: 99; max-width: 90vw; }
+  @media (max-width: 600px) { .detail-head img, .detail-head .cover-ph { width: 72px; height: 96px; } }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand"><b>番茄</b>小说下载器</div>
+  <div class="tab active" data-p="search">搜索</div>
+  <div class="tab" data-p="tasks">下载任务<span class="badge" id="badge" style="display:none"></span></div>
+  <div class="tab" data-p="files">已下载</div>
+  <div class="tab" data-p="settings">设置</div>
+  <div class="spacer"></div>
+</div>
+
+<div class="container">
+  <div class="panel active" id="p-search">
+    <div class="row">
+      <input type="text" id="q" placeholder="书名 / 作者，或粘贴番茄书籍链接、书籍 ID" autofocus>
+      <button class="primary" id="btnSearch">搜索</button>
+    </div>
+    <div id="searchMsg" class="muted"></div>
+    <div class="books" id="books"></div>
+    <div class="row" style="justify-content:center;margin-top:14px"><button class="ghost" id="btnMore" style="display:none">加载更多</button></div>
+  </div>
+
+  <div class="panel" id="p-tasks">
+    <div class="row"><span class="muted">一次下载一本，其余排队。已下载的章节会缓存，失败或中断后点「重试」只补缺的章节。</span></div>
+    <div id="tasks"></div>
+  </div>
+
+  <div class="panel" id="p-files">
+    <div class="row"><span class="muted">文件保存在 NAS 的下载目录里，也可以在这里直接下载到本机。</span><div class="spacer"></div><button class="ghost small" onclick="loadFiles()">刷新</button></div>
+    <table><thead><tr><th>文件</th><th style="width:90px">大小</th><th style="width:150px">时间</th></tr></thead><tbody id="files"></tbody></table>
+  </div>
+
+  <div class="panel" id="p-settings">
+    <div class="card">
+      <h3>下载设置</h3>
+      <div class="row">
+        <div><label>默认格式</label><select id="sFormat"><option value="txt">TXT</option><option value="epub">EPUB</option></select></div>
+        <div><label>同时下载章节数（1~8）</label><input class="num" type="number" id="sConc" min="1" max="8"></div>
+        <div><label>每章间隔（秒）</label><input class="num" type="number" id="sDelay" min="0" max="10" step="0.1"></div>
+      </div>
+      <label>文件名格式（可用 {title} {author} {book_id}）</label>
+      <input type="text" id="sName" style="width:100%">
+      <div class="row" style="margin-top:12px"><button class="primary" onclick="saveSettings()">保存</button><span class="muted">被风控（403/失败多）时把并发调到 1、间隔调大。</span></div>
+    </div>
+    <div class="card">
+      <h3>番茄登录 Cookie（可选）</h3>
+      <div class="muted" style="line-height:1.7">一般免费书不需要。只拿到试读内容时再填：电脑浏览器登录 <a href="https://fanqienovel.com" target="_blank">fanqienovel.com</a> →
+        F12 → 网络(Network) → 刷新 → 点任意一个 fanqienovel.com 请求 → 复制请求头里整行 <b>Cookie</b> 的值粘到下面。</div>
+      <label>状态：<span id="cookieState"></span></label>
+      <textarea id="sCookie" placeholder="粘贴 Cookie（留空保存＝清除）"></textarea>
+      <div class="row" style="margin-top:10px"><button class="primary" onclick="saveCookie()">保存 Cookie</button></div>
+    </div>
+    <div class="card">
+      <h3>正文反混淆 / 自检</h3>
+      <div class="muted" style="line-height:1.7">番茄网页版正文用特殊字体打乱了常用字，本程序会自动识别（每套字体首次约 1~3 分钟，之后有缓存）。
+        已识别字体：<b id="fontCount">-</b> 套。发现错字可以清除缓存重新识别，或编辑 <code>data/charmap_override.json</code> 手动纠正。</div>
+      <div class="row" style="margin-top:10px">
+        <button class="ghost" onclick="runDiag()">连通性自检</button>
+        <button class="ghost" onclick="clearFonts()">清除字体识别缓存</button>
+      </div>
+      <pre id="diag" class="muted" style="white-space:pre-wrap"></pre>
+    </div>
+    <div class="card">
+      <h3>访问密码</h3>
+      <div class="row"><input type="password" id="pwOld" placeholder="当前密码"><input type="password" id="pwNew" placeholder="新密码（至少 4 位）">
+        <button class="primary" onclick="changePw()">修改</button><button class="ghost" onclick="logout()">退出登录</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="mask" id="detailMask"><div class="modal">
+  <button class="close" onclick="closeMask('detailMask')">×</button>
+  <div id="detail"></div>
+</div></div>
+
+<div class="mask" id="readerMask"><div class="modal">
+  <button class="close" onclick="closeMask('readerMask')">×</button>
+  <h3 id="readerTitle" style="margin-bottom:12px"></h3>
+  <div class="reader" id="readerBody"></div>
+</div></div>
+
+<div class="mask" id="loginMask"><div class="modal" style="max-width:360px">
+  <h3 style="margin-bottom:12px">请输入访问密码</h3>
+  <div class="row"><input type="password" id="loginPw" placeholder="初始密码 123456" style="flex:1"><button class="primary" onclick="login()">进入</button></div>
+  <div id="loginErr" class="err"></div>
+</div></div>
+
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let toastTimer;
+function toast(msg, ms = 2600) { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = 'none', ms); }
+
+async function api(path, opts = {}) {
+  if (opts.body && typeof opts.body !== 'string') { opts.body = JSON.stringify(opts.body); opts.headers = {'Content-Type': 'application/json'}; }
+  const r = await fetch(path, opts);
+  let d = {}; try { d = await r.json(); } catch (e) {}
+  if (r.status === 401 && d.need_auth) { $('#loginMask').classList.add('show'); throw new Error(d.error); }
+  if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+  return d;
+}
+
+function closeMask(id) { $('#' + id).classList.remove('show'); }
+document.querySelectorAll('.mask').forEach(m => m.addEventListener('click', e => { if (e.target === m && m.id !== 'loginMask') m.classList.remove('show'); }));
+
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'p-' + t.dataset.p));
+  if (t.dataset.p === 'files') loadFiles();
+  if (t.dataset.p === 'settings') loadSettings();
+  if (t.dataset.p === 'tasks') loadTasks();
+});
+function gotoTab(p) { document.querySelector(`.tab[data-p=${p}]`).click(); }
+
+// ---------- 登录 ----------
+async function checkAuth() {
+  const d = await api('/api/auth/status');
+  if (!d.authed) $('#loginMask').classList.add('show');
+}
+async function login() {
+  try { await api('/api/auth/login', {method: 'POST', body: {password: $('#loginPw').value}}); closeMask('loginMask'); $('#loginErr').textContent = ''; loadTasks(); }
+  catch (e) { $('#loginErr').textContent = e.message; }
+}
+$('#loginPw').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+async function changePw() {
+  try { await api('/api/auth/change', {method: 'POST', body: {old: $('#pwOld').value, new: $('#pwNew').value}}); toast('密码已修改'); $('#pwOld').value = $('#pwNew').value = ''; }
+  catch (e) { toast(e.message); }
+}
+async function logout() { await api('/api/auth/logout', {method: 'POST'}); location.reload(); }
+
+// ---------- 搜索 ----------
+let curQ = '', curPage = 0;
+const fmtWords = n => !n ? '' : (n >= 10000 ? (n / 10000).toFixed(1) + ' 万字' : n + ' 字');
+const cover = (u, cls = '') => u ? `<img src="${esc(u)}" referrerpolicy="no-referrer" loading="lazy" onerror="this.outerHTML='<div class=cover-ph></div>'">` : '<div class="cover-ph"></div>';
+
+async function search(more = false) {
+  const q = $('#q').value.trim(); if (!q) return;
+  if (!more) { curQ = q; curPage = 0; $('#books').innerHTML = ''; } else curPage++;
+  $('#searchMsg').textContent = '搜索中…'; $('#btnMore').style.display = 'none';
+  try {
+    const d = await api(`/api/search?q=${encodeURIComponent(curQ)}&page=${curPage}`);
+    if (d.direct) { $('#searchMsg').textContent = ''; openBook(d.direct); return; }
+    $('#searchMsg').textContent = (!d.books.length && !more) ? '没有找到结果' : '';
+    for (const b of d.books) {
+      const el = document.createElement('div'); el.className = 'book';
+      el.innerHTML = `${cover(b.cover)}<div style="min-width:0"><div class="t">${esc(b.title)}</div>
+        <div class="m">${esc(b.author)} ${b.category ? '<span class=tag>' + esc(b.category) + '</span>' : ''}${b.status ? '<span class=tag>' + esc(b.status) + '</span>' : ''} ${fmtWords(+b.word_count)}</div>
+        <div class="a">${esc(b.abstract)}</div></div>`;
+      el.onclick = () => openBook(b.book_id, b);
+      $('#books').appendChild(el);
+    }
+    $('#btnMore').style.display = d.books.length >= 10 ? '' : 'none';
+  } catch (e) { $('#searchMsg').innerHTML = `<span class="err">搜索失败：${esc(e.message)}</span>`; }
+}
+$('#btnSearch').onclick = () => search();
+$('#btnMore').onclick = () => search(true);
+$('#q').addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
+
+// ---------- 详情 ----------
+let curBook = null;
+async function openBook(id, pre) {
+  $('#detail').innerHTML = `<div class="muted">加载中…${pre ? esc(pre.title) : ''}</div>`;
+  $('#detailMask').classList.add('show');
+  try {
+    const b = await api('/api/book/' + id);
+    curBook = b;
+    const cached = b.chapters.filter(c => c.cached).length;
+    let lastVol = '', rows = '';
+    b.chapters.forEach((c, i) => {
+      if (c.volume && c.volume !== lastVol) { lastVol = c.volume; rows += `<div class="vol">${esc(c.volume)}</div>`; }
+      rows += `<div><span class="n">${i + 1}</span><span class="ti">${esc(c.title || '(无标题)')}${c.locked ? ' <span class=tag>锁</span>' : ''}</span>
+        ${c.cached ? '<span class="ok" title="已缓存">✓</span>' : ''}<button class="ghost small" onclick="preview('${c.item_id}', ${i})">预览</button></div>`;
+    });
+    $('#detail').innerHTML = `
+      <div class="detail-head">${cover(b.cover)}<div>
+        <h2 style="font-size:18px;margin-bottom:6px">${esc(b.title)}</h2>
+        <div class="muted" style="margin-bottom:6px">${esc(b.author)} ${b.status ? '· ' + esc(b.status) : ''} ${b.word_count ? '· ' + fmtWords(+b.word_count) : ''}</div>
+        <div class="muted">共 ${b.chapters.length} 章${cached ? `，已缓存 ${cached} 章` : ''} · ID ${esc(b.book_id)}</div>
+      </div></div>
+      <div class="abstract">${esc(b.abstract || '')}</div>
+      <div class="row">
+        <span class="muted">章节</span><input class="num" type="number" id="dStart" value="1" min="1" max="${b.chapters.length}">
+        <span class="muted">到</span><input class="num" type="number" id="dEnd" value="${b.chapters.length}" min="1" max="${b.chapters.length}">
+        <select id="dFmt"><option value="txt">TXT</option><option value="epub">EPUB</option></select>
+        <button class="primary" onclick="download()">↓ 下载</button>
+      </div>
+      <div class="chapters">${rows}</div>`;
+    api('/api/settings').then(s => { if ($('#dFmt')) $('#dFmt').value = s.format; }).catch(() => {});
+  } catch (e) { $('#detail').innerHTML = `<div class="err">加载失败：${esc(e.message)}</div>`; }
+}
+
+async function preview(itemId, i) {
+  $('#readerTitle').textContent = '加载中…（首次需要识别字体，可能要 1~3 分钟）';
+  $('#readerBody').textContent = '';
+  $('#readerMask').classList.add('show');
+  try {
+    const c = await api('/api/chapter/' + itemId);
+    $('#readerTitle').textContent = c.title || curBook.chapters[i].title;
+    $('#readerBody').textContent = c.paragraphs.map(p => '　　' + p).join('\n') + (c.partial ? '\n\n【只拿到试读内容，需要在设置里填 Cookie】' : '');
+  } catch (e) { $('#readerTitle').textContent = '加载失败'; $('#readerBody').textContent = e.message; }
+}
+
+async function download() {
+  const b = curBook;
+  try {
+    await api('/api/download', {method: 'POST', body: {book_id: b.book_id, title: b.title, author: b.author,
+      start: +$('#dStart').value, end: +$('#dEnd').value, format: $('#dFmt').value}});
+    closeMask('detailMask'); toast('已加入下载队列'); gotoTab('tasks');
+  } catch (e) { toast(e.message); }
+}
+
+// ---------- 任务 ----------
+async function loadTasks() {
+  let d; try { d = await api('/api/tasks'); } catch (e) { return; }
+  const active = d.tasks.filter(t => ['排队中', '下载中', '导出中'].includes(t.status)).length;
+  $('#badge').style.display = active ? '' : 'none'; $('#badge').textContent = active;
+  if (!d.tasks.length) { $('#tasks').innerHTML = '<div class="muted">还没有下载任务。</div>'; return; }
+  $('#tasks').innerHTML = d.tasks.map(t => {
+    const pct = t.total ? Math.round(t.done / t.total * 100) : 0;
+    const running = ['排队中', '下载中', '导出中'].includes(t.status);
+    const fails = (t.failed || []);
+    return `<div class="task"><div class="head">
+      <span class="name">${esc(t.title)} <span class="muted">${esc(t.author || '')} · ${t.format.toUpperCase()}</span></span>
+      <span class="st ${esc(t.status)}">${esc(t.status)}</span>
+      ${running ? `<button class="ghost small" onclick="taskAct('${t.id}','cancel')">取消</button>` : `<button class="ghost small" onclick="taskAct('${t.id}','retry')">重试</button>`}
+      ${t.file ? `<a class="small" href="/api/files/${encodeURIComponent(t.file)}">下载文件</a>` : ''}
+      <button class="danger small" onclick="taskAct('${t.id}','delete')">删除</button></div>
+      <div class="bar"><i style="width:${t.status === '完成' ? 100 : pct}%"></i></div>
+      <div class="muted">${t.total ? `${t.done}/${t.total} 章` : ''} ${esc(t.message || '')} ${t.file ? '→ ' + esc(t.file) : ''}</div>
+      ${fails.length ? `<details><summary>${fails.length} 章失败</summary>${fails.slice(0, 50).map(f => `<div>第 ${f.index} 章 ${esc(f.title)}：${esc(f.error)}</div>`).join('')}</details>` : ''}
+    </div>`;
+  }).join('');
+}
+async function taskAct(id, act) { try { await api(`/api/tasks/${id}/${act}`, {method: 'POST'}); loadTasks(); } catch (e) { toast(e.message); } }
+setInterval(() => { if (!$('#loginMask').classList.contains('show')) loadTasks(); }, 2000);
+
+// ---------- 文件 ----------
+async function loadFiles() {
+  const d = await api('/api/files');
+  const size = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.ceil(n / 1024) + ' KB';
+  $('#files').innerHTML = d.files.map(f => `<tr><td><a href="/api/files/${encodeURIComponent(f.name)}">${esc(f.name)}</a></td>
+    <td>${size(f.size)}</td><td class="muted">${new Date(f.mtime * 1000).toLocaleString()}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">暂无文件</td></tr>';
+}
+
+// ---------- 设置 ----------
+async function loadSettings() {
+  const s = await api('/api/settings');
+  $('#sFormat').value = s.format; $('#sConc').value = s.concurrency; $('#sDelay').value = s.delay; $('#sName').value = s.filename;
+  $('#cookieState').innerHTML = s.cookie_set ? '<span class="ok">已设置</span>' : '未设置';
+  $('#fontCount').textContent = s.fonts;
+}
+async function saveSettings() {
+  try { await api('/api/settings', {method: 'POST', body: {format: $('#sFormat').value, concurrency: $('#sConc').value, delay: $('#sDelay').value, filename: $('#sName').value}}); toast('已保存'); }
+  catch (e) { toast(e.message); }
+}
+async function saveCookie() {
+  try { await api('/api/settings', {method: 'POST', body: {cookie: $('#sCookie').value}}); $('#sCookie').value = ''; toast('Cookie 已保存'); loadSettings(); }
+  catch (e) { toast(e.message); }
+}
+async function runDiag() {
+  $('#diag').textContent = '检测中…';
+  try { const d = await api('/api/diag'); $('#diag').textContent = `番茄网站：${d.fanqie}\nCookie：${d.cookie ? '已设置' : '未设置'}\nOCR 引擎：${d.tesseract}  语言：${(d.ocr_langs || []).join(', ')}`; }
+  catch (e) { $('#diag').textContent = e.message; }
+}
+async function clearFonts() { if (!confirm('清除后下次下载会重新识别字体，确定？')) return; await api('/api/fontmaps/clear', {method: 'POST'}); toast('已清除'); loadSettings(); }
+
+checkAuth().then(loadTasks);
+</script>
+</body>
+</html>
