@@ -1,0 +1,27 @@
+# 媒体下载器（两合一）—— 群晖免构建版
+# 网易云音乐 + 视频/音频下载(B站/YouTube)，一个容器、一个网页、一个下载目录。
+# 直接用官方 python 镜像，启动时自动装 ffmpeg 和依赖（走清华镜像源），不需要 build。
+services:
+  media:
+    image: python:3.11-slim
+    container_name: media-downloader
+    ports:
+      - "18889:8083"
+    volumes:
+      - /volume1/docker/music/app:/opt/app:ro          # 程序代码
+      - /volume2/downloads/音乐:/downloads     # 歌曲下载目录（NAS 上的这个文件夹）
+      - /volume1/docker/music/data:/data             # 网易云登录态
+      - /volume1/docker/music/cookies:/cookies:ro      # 可选：B站/YouTube 登录用 cookies.txt
+    environment:
+      - TZ=Asia/Shanghai
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    command: >
+      bash -c "
+      (sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true) ;
+      (sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list 2>/dev/null || true) ;
+      apt-get update && apt-get install -y --no-install-recommends ffmpeg &&
+      pip install -q --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple
+      flask pycryptodome qrcode pillow mutagen requests yt-dlp &&
+      python /opt/app/app.py"
+    restart: unless-stopped

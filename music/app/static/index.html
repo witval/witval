@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>媒体下载器</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { min-height: 100%; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; }
+  body { background: #16181d; color: #e8eaed; }
+
+  .topbar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 20px; background: #22252c; border-bottom: 1px solid #33363e;
+    position: sticky; top: 0; z-index: 10;
+  }
+  .brand { font-size: 16px; font-weight: 700; margin-right: 18px; padding: 12px 0; white-space: nowrap; }
+  .tab {
+    padding: 14px 16px; cursor: pointer; font-size: 14px; color: #9aa0a6;
+    border-bottom: 2px solid transparent; user-select: none;
+  }
+  .tab.active { color: #fff; border-bottom-color: #1a73e8; }
+
+  .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  button {
+    padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer;
+    font-size: 13px; font-weight: 500; white-space: nowrap; transition: background .15s;
+  }
+  .primary { background: #1a73e8; color: #fff; }
+  .primary:hover { background: #1765cc; }
+  .ncm .primary { background: #ec4141; }
+  .ncm .primary:hover { background: #d63a3a; }
+  .ghost { background: #3a3d45; color: #e8eaed; }
+  .ghost:hover { background: #474b54; }
+  button:disabled { background: #555a63 !important; color: #bbb; cursor: not-allowed; }
+
+  input, select {
+    background: #22252c; color: #e8eaed; border: 1px solid #44474f;
+    border-radius: 8px; padding: 10px 12px; font-size: 14px;
+  }
+  input:focus, select:focus { outline: none; border-color: #1a73e8; }
+  .row { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .row input[type=text] { flex: 1; min-width: 220px; }
+  .muted { color: #9aa0a6; font-size: 13px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; color: #9aa0a6; font-weight: 500; font-size: 12px; padding: 8px 10px; border-bottom: 1px solid #33363e; }
+  td { padding: 9px 10px; border-bottom: 1px solid #26292f; vertical-align: middle; }
+  tr:hover td { background: #1d2026; }
+  .cover { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; background: #33363e; }
+  .fee { display: inline-block; margin-left: 6px; font-size: 11px; color: #ec4141; border: 1px solid #ec4141; border-radius: 4px; padding: 0 4px; }
+
+  .section-title { font-size: 14px; color: #9aa0a6; margin: 24px 0 10px; }
+  .task { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid #26292f; font-size: 13px; }
+  .task .bar { flex: 1; height: 6px; background: #33363e; border-radius: 3px; overflow: hidden; min-width: 100px; }
+  .task .bar i { display: block; height: 100%; background: #1a73e8; transition: width .3s; }
+  .st-done { color: #81c995; } .st-error { color: #f28b82; } .st-run { color: #fdd663; }
+  .tname { min-width: 160px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tmsg { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hint { text-align: center; color: #9aa0a6; font-size: 13px; padding: 24px 0; }
+
+  .user { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #9aa0a6; margin-bottom: 14px; }
+  .user img { width: 26px; height: 26px; border-radius: 50%; }
+  .vip-tag { background: #ec4141; color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 4px; }
+  .login-card { text-align: center; padding: 24px; }
+  .login-card img.qr { width: 200px; height: 200px; border-radius: 8px; background: #fff; padding: 8px; }
+  .login-card .msg { font-size: 13px; min-height: 20px; margin-top: 12px; color: #fdd663; }
+  .login-card .msg.ok { color: #81c995; } .login-card .msg.err { color: #f28b82; }
+  .status { font-size: 13px; }
+  .status.ok { color: #81c995; } .status.err { color: #f28b82; } .status.busy { color: #fdd663; }
+  .spinner { display: inline-block; width: 13px; height: 13px; vertical-align: -2px; margin-right: 6px;
+    border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="brand">🎵 媒体下载器</span>
+    <span class="tab active" data-tab="ncm">网易云音乐</span>
+    <span class="tab" data-tab="ytdl">视频/音频下载</span>
+    <span class="spacer" style="flex:1"></span>
+    <button class="ghost" id="changePwBtn" style="margin:6px 0">🔒 修改密码</button>
+  </div>
+
+  <div class="container">
+    <!-- 标签页一：网易云 -->
+    <div class="panel active ncm" id="panel-ncm">
+      <div id="ncmLogin" style="display:none">
+        <div class="login-card">
+          <h2 style="margin-bottom:6px">扫码登录网易云</h2>
+          <p class="muted" style="margin-bottom:16px">打开手机网易云音乐 App 扫一扫（官方流程，不保存密码）</p>
+          <img class="qr" id="qrImg" src="" alt="二维码加载中...">
+          <div class="msg" id="qrMsg">二维码加载中...</div>
+          <button class="ghost" id="qrRefresh" style="margin-top:10px">刷新二维码</button>
+        </div>
+      </div>
+
+      <div id="ncmMain" style="display:none">
+        <div class="user" id="userBox">
+          <img id="avatar" src="" alt="">
+          <span id="nickname"></span><span class="vip-tag" id="vipTag" style="display:none">VIP</span>
+          <button class="ghost" id="logoutBtn" style="margin-left:auto">退出登录</button>
+        </div>
+        <div class="row">
+          <input type="text" id="q" placeholder="搜索歌曲 / 歌手 / 专辑...">
+          <label class="muted">音质
+            <select id="level">
+              <option value="standard">标准</option>
+              <option value="exhigh" selected>极高 320k</option>
+              <option value="lossless">无损 FLAC</option>
+            </select>
+          </label>
+          <button class="primary" id="searchBtn">搜 索</button>
+        </div>
+        <div id="results"></div>
+      </div>
+
+      <p class="muted" style="margin-top:20px">
+        📀 NCM 转换：把网易云的 <b>.ncm</b> 文件放进 downloads 文件夹会自动解密成 FLAC/MP3。
+        <button class="ghost" id="ncmScanBtn" style="margin-left:8px">立即扫描转换</button>
+        <span id="ncmMsg" class="status"></span>
+      </p>
+    </div>
+
+    <!-- 标签页二：yt-dlp -->
+    <div class="panel" id="panel-ytdl">
+      <div class="user" id="biliBox">
+        <span id="biliState" class="muted">B站会员：未登录（下载会员/高清内容需登录）</span>
+        <button class="ghost" id="biliLoginBtn">扫码登录 B站</button>
+        <button class="ghost" id="biliLogoutBtn" style="display:none">退出 B站</button>
+      </div>
+      <div class="user" id="ytCookieBox">
+        <span id="ytCookieState" class="muted">YouTube：一般无需登录；会员/年龄限制内容可上传 cookies.txt</span>
+        <button class="ghost" id="ytCookieBtn">上传 cookies.txt</button>
+        <button class="ghost" id="ytCookieClear" style="display:none">清除</button>
+        <input type="file" id="ytCookieFile" accept=".txt" style="display:none">
+      </div>
+      <div class="row">
+        <input type="text" id="ytUrl" placeholder="粘贴 B站 / YouTube 视频链接...">
+        <label class="muted">下载
+          <select id="ytMode">
+            <option value="audio_best" selected>原始最佳音频</option>
+            <option value="mp3">MP3 320k</option>
+            <option value="flac">FLAC 无损</option>
+            <option value="video">最高画质视频</option>
+          </select>
+        </label>
+        <button class="primary" id="ytBtn">添加下载</button>
+        <span class="status" id="ytStatus"></span>
+      </div>
+      <p class="muted" id="ytHint">
+        音频选「原始最佳音频」= 抓源站最高码率音频流（音质最高、不转码）；需要统一格式再选 MP3/FLAC。
+      </p>
+    </div>
+
+    <!-- 共用：任务 + 文件 -->
+    <div class="section-title" id="taskTitle" style="display:none">下载任务</div>
+    <div id="taskList"></div>
+    <div class="section-title">已下载文件（/downloads）</div>
+    <div id="fileList" class="muted" style="font-size:13px">加载中...</div>
+  </div>
+
+  <!-- 访问密码登录 -->
+  <div id="authOverlay" style="display:none;position:fixed;inset:0;background:rgba(15,17,21,.97);z-index:200;align-items:center;justify-content:center">
+    <div style="background:#22252c;border:1px solid #33363e;border-radius:12px;padding:30px 36px;width:320px;text-align:center">
+      <h2 style="font-size:18px;margin-bottom:6px">🔒 访问密码</h2>
+      <p class="muted" style="margin-bottom:16px">请输入访问密码（初始密码 123456）</p>
+      <input type="password" id="authPw" placeholder="访问密码" style="width:100%;margin-bottom:14px" autofocus>
+      <button class="primary" id="authBtn" style="width:100%;padding:10px">进 入</button>
+      <div id="authMsg" style="font-size:13px;min-height:18px;margin-top:10px;color:#f28b82"></div>
+    </div>
+  </div>
+
+  <!-- B站扫码登录弹窗 -->
+  <div id="biliOverlay" style="display:none;position:fixed;inset:0;background:rgba(15,17,21,.94);z-index:100;align-items:center;justify-content:center">
+    <div style="background:#22252c;border:1px solid #33363e;border-radius:12px;padding:28px 32px;width:320px;text-align:center">
+      <h2 style="font-size:17px;margin-bottom:6px">扫码登录哔哩哔哩</h2>
+      <p class="muted" style="margin-bottom:16px">打开手机 B站 App 扫一扫（官方流程，不保存密码）</p>
+      <img id="biliQr" src="" alt="二维码加载中..." style="width:200px;height:200px;border-radius:8px;background:#fff;padding:8px">
+      <div id="biliQrMsg" style="font-size:13px;min-height:20px;margin-top:12px;color:#fdd663">二维码加载中...</div>
+      <div style="margin-top:12px;display:flex;gap:10px;justify-content:center">
+        <button class="ghost" id="biliQrRefresh">刷新二维码</button>
+        <button class="ghost" id="biliQrClose">关闭</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+let qrKey='', qrTimer=null, taskTimer=null, lastSongs=[];
+
+/* ---------- 标签切换 ---------- */
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  $('panel-' + t.dataset.tab).classList.add('active');
+}));
+
+/* ---------- 网易云：登录状态 ---------- */
+async function checkStatus() {
+  try {
+    const d = await (await fetch('/api/status')).json();
+    if (d.logged_in) {
+      $('ncmLogin').style.display = 'none';
+      $('ncmMain').style.display = 'block';
+      $('nickname').textContent = d.nickname;
+      $('avatar').src = d.avatar ? d.avatar + '?param=60y60' : '';
+      $('vipTag').style.display = d.vip ? '' : 'none';
+      if (qrTimer) { clearInterval(qrTimer); qrTimer = null; }
+    } else {
+      $('ncmLogin').style.display = 'block';
+      $('ncmMain').style.display = 'none';
+      if (!qrTimer) newQr();
+    }
+  } catch (e) {}
+}
+async function newQr() {
+  $('qrMsg').className='msg'; $('qrMsg').textContent='二维码加载中...';
+  try {
+    const d = await (await fetch('/api/qr/new')).json();
+    if (d.error) { $('qrMsg').className='msg err'; $('qrMsg').textContent=d.error; return; }
+    qrKey = d.key; $('qrImg').src = d.qr; $('qrMsg').textContent='等待扫码...';
+    clearInterval(qrTimer); qrTimer = setInterval(pollQr, 2000);
+  } catch (e) { $('qrMsg').className='msg err'; $('qrMsg').textContent='网络错误，点刷新'; }
+}
+async function pollQr() {
+  try {
+    const d = await (await fetch('/api/qr/check?key=' + encodeURIComponent(qrKey))).json();
+    if (d.error) return;
+    if (d.code === 803) {
+      $('qrMsg').className='msg ok'; $('qrMsg').textContent='登录成功！';
+      clearInterval(qrTimer); qrTimer=null; setTimeout(checkStatus, 800);
+    } else if (d.code === 801 || d.code === 802) {
+      $('qrMsg').className='msg'; $('qrMsg').textContent=d.message;
+    } else {
+      $('qrMsg').className='msg err'; $('qrMsg').textContent=d.message;
+      clearInterval(qrTimer); qrTimer=null;
+    }
+  } catch (e) {}
+}
+$('qrRefresh').addEventListener('click', newQr);
+$('logoutBtn').addEventListener('click', async () => {
+  if (!confirm('确定退出登录吗？')) return;
+  await fetch('/api/logout', { method: 'POST' }); location.reload();
+});
+
+/* ---------- 网易云：搜索 + 下载 ---------- */
+function fmtDur(s){ return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
+async function doSearch() {
+  const q = $('q').value.trim(); if (!q) return;
+  $('results').innerHTML = '<div class="hint">搜索中...</div>';
+  try {
+    const d = await (await fetch('/api/search?q=' + encodeURIComponent(q))).json();
+    if (d.error) { $('results').innerHTML = '<div class="hint">' + esc(d.error) + '</div>'; return; }
+    lastSongs = d.songs || [];
+    if (!lastSongs.length) { $('results').innerHTML = '<div class="hint">没有找到相关歌曲</div>'; return; }
+    let h = '<table><tr><th></th><th>歌曲</th><th>歌手</th><th>专辑</th><th>时长</th><th></th></tr>';
+    for (const s of lastSongs) {
+      h += `<tr><td><img class="cover" src="${s.pic ? s.pic+'?param=80y80':''}" loading="lazy"></td>
+        <td>${esc(s.name)}${s.fee===1?'<span class="fee">VIP</span>':''}</td>
+        <td class="muted">${esc(s.artists)}</td><td class="muted">${esc(s.album)}</td>
+        <td class="muted">${fmtDur(s.duration)}</td>
+        <td><button class="primary" onclick="dlSong(${s.id},this)">↓ 下载</button></td></tr>`;
+    }
+    $('results').innerHTML = h + '</table>';
+  } catch (e) { $('results').innerHTML = '<div class="hint">网络错误：' + e + '</div>'; }
+}
+window.dlSong = async function(id, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '已加入'; }
+  try {
+    const r = await fetch('/api/download', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ id, level: $('level').value }) });
+    const d = await r.json();
+    if (d.error) { alert(d.error); if (btn){btn.disabled=false;btn.textContent='↓ 下载';} return; }
+    startTasks();
+  } catch (e) { alert('网络错误：' + e); if (btn){btn.disabled=false;btn.textContent='↓ 下载';} }
+};
+$('searchBtn').addEventListener('click', doSearch);
+$('q').addEventListener('keydown', e => { if (e.key==='Enter') doSearch(); });
+
+/* ---------- 视频/音频下载 ---------- */
+async function addYtdl() {
+  const url = $('ytUrl').value.trim();
+  if (!/^https?:\/\//.test(url)) { $('ytStatus').className='status err'; $('ytStatus').textContent='请输入正确的链接'; return; }
+  $('ytBtn').disabled = true;
+  $('ytStatus').className='status busy'; $('ytStatus').innerHTML='<span class="spinner"></span>已提交';
+  try {
+    const r = await fetch('/api/ytdl', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ url, mode: $('ytMode').value }) });
+    const d = await r.json();
+    if (d.error) { $('ytStatus').className='status err'; $('ytStatus').textContent='✗ '+d.error; }
+    else { $('ytStatus').className='status ok'; $('ytStatus').textContent='✓ 已加入下载队列'; $('ytUrl').value=''; startTasks(); }
+  } catch (e) { $('ytStatus').className='status err'; $('ytStatus').textContent='网络错误：'+e; }
+  $('ytBtn').disabled = false;
+}
+$('ytBtn').addEventListener('click', addYtdl);
+$('ytUrl').addEventListener('keydown', e => { if (e.key==='Enter') addYtdl(); });
+
+/* ---------- B站扫码登录 ---------- */
+let biliTimer=null, biliKey='';
+async function biliStatus() {
+  try {
+    const d = await (await fetch('/api/bili/status')).json();
+    if (d.logged_in) {
+      $('biliState').textContent = 'B站已登录：' + d.nickname + (d.vip ? '（' + (d.vip_label||'大会员') + '）' : '');
+      $('biliState').className = 'st-done';
+      $('biliLoginBtn').style.display = 'none';
+      $('biliLogoutBtn').style.display = '';
+    } else {
+      $('biliState').textContent = 'B站会员：未登录（下载会员/高清内容需登录）';
+      $('biliState').className = 'muted';
+      $('biliLoginBtn').style.display = '';
+      $('biliLogoutBtn').style.display = 'none';
+    }
+  } catch (e) {}
+}
+async function biliNewQr() {
+  $('biliQrMsg').style.color='#fdd663'; $('biliQrMsg').textContent='二维码加载中...';
+  try {
+    const d = await (await fetch('/api/bili/qr/new')).json();
+    if (d.error) { $('biliQrMsg').style.color='#f28b82'; $('biliQrMsg').textContent=d.error; return; }
+    biliKey=d.key; $('biliQr').src=d.qr; $('biliQrMsg').textContent='等待扫码...';
+    clearInterval(biliTimer); biliTimer=setInterval(biliPoll, 2000);
+  } catch (e) { $('biliQrMsg').style.color='#f28b82'; $('biliQrMsg').textContent='网络错误，点刷新'; }
+}
+async function biliPoll() {
+  try {
+    const d = await (await fetch('/api/bili/qr/check?key=' + encodeURIComponent(biliKey))).json();
+    if (d.error) return;
+    if (d.code === 0) {
+      $('biliQrMsg').style.color='#81c995'; $('biliQrMsg').textContent='登录成功！';
+      clearInterval(biliTimer); biliTimer=null;
+      setTimeout(() => { $('biliOverlay').style.display='none'; biliStatus(); refreshModes(); }, 800);
+    } else if (d.code === 86039 || d.code === 86090) {
+      $('biliQrMsg').style.color='#fdd663'; $('biliQrMsg').textContent=d.message;
+    } else {
+      $('biliQrMsg').style.color='#f28b82'; $('biliQrMsg').textContent=d.message;
+      clearInterval(biliTimer); biliTimer=null;
+    }
+  } catch (e) {}
+}
+$('biliLoginBtn').addEventListener('click', () => { $('biliOverlay').style.display='flex'; biliNewQr(); });
+$('biliQrRefresh').addEventListener('click', biliNewQr);
+$('biliQrClose').addEventListener('click', () => { $('biliOverlay').style.display='none'; clearInterval(biliTimer); biliTimer=null; });
+$('biliLogoutBtn').addEventListener('click', async () => {
+  if (!confirm('确定退出 B站登录吗？')) return;
+  await fetch('/api/bili/logout', { method:'POST' }); biliStatus(); refreshModes();
+});
+
+function refreshModes() {
+  fetch('/api/ytdl/modes').then(r=>r.json()).then(d=>{
+    $('ytHint').textContent = '音频选「原始最佳音频」= 抓源站最高码率音频流（音质最高、不转码）；需要统一格式再选 MP3/FLAC。'
+      + (d && d.has_cookies ? '　✓ 已登录/已配置 cookie，会员内容可用' : '');
+  }).catch(()=>{});
+}
+
+/* ---------- 共用：任务 + 文件 ---------- */
+function startTasks() { if (!taskTimer) taskTimer = setInterval(refreshTasks, 2000); refreshTasks(); }
+async function refreshTasks() {
+  try {
+    const d = await (await fetch('/api/tasks')).json();
+    const list = d.tasks || [];
+    if (!list.length) return;
+    $('taskTitle').style.display = '';
+    let anyRunning = false, h = '';
+    for (const t of list) {
+      const cls = t.status==='done'?'st-done':t.status==='error'?'st-error':'st-run';
+      if (t.status==='running'||t.status==='pending') anyRunning = true;
+      h += `<div class="task"><span class="tname">${esc(t.name)}</span>
+        <span class="bar"><i style="width:${t.progress||0}%"></i></span>
+        <span class="${cls} tmsg">${esc(t.message)}</span></div>`;
+    }
+    $('taskList').innerHTML = h;
+    if (!anyRunning) { clearInterval(taskTimer); taskTimer=null; refreshFiles(); }
+  } catch (e) {}
+}
+async function refreshFiles() {
+  try {
+    const d = await (await fetch('/api/files')).json();
+    const files = d.files || [];
+    $('fileList').innerHTML = files.length
+      ? files.map(f => `${esc(f.name)} <span style="color:#5f6368">（${f.size_mb} MB）</span>`).join('<br>')
+      : '还没有下载任何文件';
+  } catch (e) {}
+}
+
+/* ---------- YouTube cookies 上传 ---------- */
+async function ytCookieStatus() {
+  try {
+    const d = await (await fetch('/api/cookies/status')).json();
+    const on = d.youtube || d.manual;
+    $('ytCookieState').textContent = on
+      ? 'YouTube：已配置 cookies（会员/年龄限制内容可用）'
+      : 'YouTube：一般无需登录；会员/年龄限制内容可上传 cookies.txt';
+    $('ytCookieState').className = on ? 'st-done' : 'muted';
+    $('ytCookieClear').style.display = d.youtube ? '' : 'none';
+  } catch (e) {}
+}
+$('ytCookieBtn').addEventListener('click', () => $('ytCookieFile').click());
+$('ytCookieFile').addEventListener('change', async e => {
+  const file = e.target.files[0]; if (!file) return;
+  const content = await file.text();
+  try {
+    const r = await fetch('/api/cookies/youtube', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ content }) });
+    const d = await r.json();
+    alert(d.error ? ('上传失败：' + d.error) : '✓ ' + d.message);
+    ytCookieStatus(); refreshModes();
+  } catch (err) { alert('上传失败：' + err); }
+  e.target.value = '';
+});
+$('ytCookieClear').addEventListener('click', async () => {
+  await fetch('/api/cookies/youtube/clear', { method:'POST' }); ytCookieStatus(); refreshModes();
+});
+
+/* ---------- NCM 扫描转换 ---------- */
+$('ncmScanBtn').addEventListener('click', async () => {
+  $('ncmMsg').className='status busy'; $('ncmMsg').innerHTML='<span class="spinner"></span>扫描中...';
+  try {
+    const d = await (await fetch('/api/ncm/scan', { method:'POST' })).json();
+    $('ncmMsg').className='status ok'; $('ncmMsg').textContent='✓ ' + d.message;
+    if (d.found) startTasks();
+  } catch (e) { $('ncmMsg').className='status err'; $('ncmMsg').textContent='扫描失败：'+e; }
+});
+
+/* ---------- 访问密码 ---------- */
+async function authGate() {
+  try {
+    const d = await (await fetch('/api/auth/status')).json();
+    if (d.authed) { $('authOverlay').style.display='none'; boot(); }
+    else { $('authOverlay').style.display='flex'; setTimeout(()=>$('authPw').focus(), 50); }
+  } catch (e) { $('authOverlay').style.display='flex'; }
+}
+async function doAuth() {
+  const pw = $('authPw').value; if (!pw) return;
+  try {
+    const r = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ password: pw }) });
+    if (r.ok) { $('authOverlay').style.display='none'; location.reload(); }
+    else { const d = await r.json(); $('authMsg').textContent = d.error || '密码错误'; }
+  } catch (e) { $('authMsg').textContent = '网络错误：' + e; }
+}
+$('authBtn').addEventListener('click', doAuth);
+$('authPw').addEventListener('keydown', e => { if (e.key==='Enter') doAuth(); });
+$('changePwBtn').addEventListener('click', async () => {
+  const oldp = prompt('请输入当前密码：'); if (oldp===null) return;
+  const np = prompt('请输入新密码（至少 4 位）：'); if (np===null) return;
+  try {
+    const r = await fetch('/api/auth/change', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ old: oldp, new: np }) });
+    const d = await r.json();
+    alert(d.error ? ('修改失败：' + d.error) : '✓ ' + d.message);
+  } catch (e) { alert('网络错误：' + e); }
+});
+
+/* ---------- 启动：先过密码，再加载数据 ---------- */
+function boot() {
+  checkStatus();
+  refreshFiles();
+  refreshModes();
+  biliStatus();
+  ytCookieStatus();
+  setInterval(checkStatus, 60000);
+}
+authGate();
+</script>
+</body>
+</html>
