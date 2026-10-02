@@ -1,5 +1,5 @@
 # 媒体下载器（两合一）—— 群晖免构建版
-# 网易云音乐 + 视频/音频下载(B站/YouTube)，一个容器、一个网页、一个下载目录。
+# 网易云音乐 + B站/YouTube 搜索下载，一个容器、一个网页、一个下载目录。
 # 直接用官方 python 镜像，启动时自动装 ffmpeg 和依赖（走清华镜像源），不需要 build。
 services:
   media:
@@ -16,12 +16,28 @@ services:
       - TZ=Asia/Shanghai
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
+      # ↓↓ YouTube 在国内必须走代理：去掉下一行开头的 # 并改成你的代理（http:// 或 socks5://）
+      #    注意不能写 127.0.0.1（那是容器自己），要写电脑/路由器/旁路由的局域网 IP，
+      #    并在 Clash 等代理软件里打开「允许局域网连接 / Allow LAN」。B站不走代理。
+      # - YTDLP_PROXY=http://192.168.1.2:7890
+      # ↓↓ 可选：YouTube 提示 "Sign in to confirm you're not a bot" 时，启用下方 bgutil-pot 服务并去掉这行的 #
+      # - POT_PROVIDER_URL=http://bgutil-pot:4416
     command: >
       bash -c "
       (sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true) ;
       (sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list 2>/dev/null || true) ;
       apt-get update && apt-get install -y --no-install-recommends ffmpeg &&
       pip install -q --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple
-      flask pycryptodome qrcode pillow mutagen requests yt-dlp &&
+      flask pycryptodome qrcode pillow mutagen requests bgutil-ytdlp-pot-provider
+      'yt-dlp[default,deno]' &&
+      (pip install -q --no-cache-dir -U --pre --no-deps -i https://pypi.tuna.tsinghua.edu.cn/simple yt-dlp || true) &&
+      deno --version | head -1 && python -m yt_dlp --version &&
       python /opt/app/app.py"
     restart: unless-stopped
+
+  # 可选：YouTube PO Token 服务（解决 "Sign in to confirm you're not a bot"）。
+  # 需要时去掉下面几行开头的 #，并打开上面的 POT_PROVIDER_URL。
+  # bgutil-pot:
+  #   image: brainicism/bgutil-ytdlp-pot-provider:latest
+  #   container_name: bgutil-pot
+  #   restart: unless-stopped

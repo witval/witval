@@ -8,12 +8,13 @@
 - 只能下载当前账号有权限的歌曲，不绕过 VIP / 版权限制
 
 标签页二：视频/音频下载（B站 / YouTube 等，基于 yt-dlp）
-- 粘贴链接，可选“原始最佳音频 / MP3 320k / FLAC / 最高画质视频”
+- 直接搜索 B站 / YouTube（也可粘贴链接），可选“原始最佳音频 / MP3 320k / FLAC / 最高画质视频”
 - 需登录/会员内容可选用 /cookies/cookies.txt
 """
 import base64
 import codecs
 import hashlib
+import html
 import http.cookiejar
 import io
 import json
@@ -666,10 +667,83 @@ class Bili:
 
     def logout(self):
         self.s.cookies.clear()
+        self._mixin_key = None
         try:
             os.remove(BILI_COOKIE_FILE)
         except OSError:
             pass
+
+    # ---- 视频搜索（网页版 wbi 签名接口）----
+    WBI_TAB = [46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49,
+               33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40,
+               61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11,
+               36, 20, 34, 44, 52]
+    _mixin_key = None
+    _mixin_ts = 0
+
+    def _wbi_key(self, force=False):
+        if force or not self._mixin_key or time.time() - self._mixin_ts > 3600:
+            d = self.s.get("https://api.bilibili.com/x/web-interface/nav", timeout=15).json()
+            wbi = (d.get("data") or {}).get("wbi_img") or {}
+            img = wbi["img_url"].rsplit("/", 1)[1].split(".")[0]
+            sub = wbi["sub_url"].rsplit("/", 1)[1].split(".")[0]
+            raw = img + sub
+            self._mixin_key = "".join(raw[i] for i in self.WBI_TAB)[:32]
+            self._mixin_ts = time.time()
+        return self._mixin_key
+
+    @staticmethod
+    def _wbi_sign(params, mixin_key):
+        params = dict(params, wts=int(time.time()))
+        params = {k: re.sub(r"[!'()*]", "", str(v)) for k, v in sorted(params.items())}
+        q = urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
+        params["w_rid"] = hashlib.md5((q + mixin_key).encode()).hexdigest()
+        return params
+
+    def search_video(self, keyword, page=1, page_size=20):
+        params = {"search_type": "video", "keyword": keyword,
+                  "page": page, "page_size": page_size}
+        err = ""
+        for attempt in range(2):
+            try:
+                if attempt:   # 第二次：刷新游客 cookie 和签名密钥
+                    self.s.get("https://www.bilibili.com/", timeout=15)
+                signed = self._wbi_sign(params, self._wbi_key(force=bool(attempt)))
+                d = self.s.get("https://api.bilibili.com/x/web-interface/wbi/search/type",
+                               params=signed, timeout=15,
+                               headers={"Referer": "https://search.bilibili.com/"}).json()
+                if int(d.get("code", -1)) == 0:
+                    out = []
+                    for v in (d.get("data") or {}).get("result") or []:
+                        if v.get("type") != "video" or not v.get("bvid"):
+                            continue
+                        pic = v.get("pic") or ""
+                        if pic.startswith("//"):
+                            pic = "https:" + pic
+                        out.append({
+                            "source": "bilibili",
+                            "title": html.unescape(re.sub(r"<[^>]+>", "", v.get("title", ""))),
+                            "url": f"https://www.bilibili.com/video/{v['bvid']}",
+                            "uploader": v.get("author", ""),
+                            "duration": _dur_to_sec(v.get("duration")),
+                            "pic": (pic + "@320w_180h_1c.jpg") if pic else "",
+                            "plays": v.get("play"),
+                        })
+                    return out
+                err = f"code={d.get('code')} {d.get('message', '')}"
+            except Exception as e:
+                err = str(e)
+        raise RuntimeError(f"B站接口：{err}")
+
+
+def _dur_to_sec(text):
+    try:
+        sec = 0
+        for part in str(text).split(":"):
+            sec = sec * 60 + int(part)
+        return sec
+    except (TypeError, ValueError):
+        return 0
 
 
 bili = Bili()
@@ -779,6 +853,61 @@ def api_cookies_youtube_clear():
         pass
     return jsonify({"ok": True, "message": "已清除 YouTube cookies"})
 
+# YouTube 国内需走代理；B站默认直连（可用 PROXY_FOR_BILIBILI=true 强制走代理）
+YTDLP_PROXY = os.environ.get("YTDLP_PROXY", "").strip() or None
+PROXY_FOR_BILIBILI = os.environ.get("PROXY_FOR_BILIBILI", "false").lower() == "true"
+# 可选：bgutil PO Token 服务地址，解决 YouTube「Sign in to confirm you're not a bot」
+POT_PROVIDER_URL = os.environ.get("POT_PROVIDER_URL", "").strip()
+
+
+def _is_bili(url):
+    u = url.lower()
+    return "bilibili.com" in u or "b23.tv" in u
+
+
+def _ytdl_base_opts(url):
+    """B站/YouTube 共用的 yt-dlp 参数（代理、cookie、YouTube 防风控）。"""
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "socket_timeout": 20,
+        "retries": 5,
+        "fragment_retries": 5,
+        # YouTube 需要 JS 运行时（deno）解签名；没装 yt-dlp-ejs 时允许从 GitHub 拉解签脚本
+        "remote_components": ["ejs:github"],
+    }
+    if YTDLP_PROXY and (not _is_bili(url) or PROXY_FOR_BILIBILI):
+        opts["proxy"] = YTDLP_PROXY
+    cookie_path = _pick_cookiefile()
+    if cookie_path:
+        opts["cookiefile"] = cookie_path
+    if POT_PROVIDER_URL and not _is_bili(url):
+        opts["extractor_args"] = {"youtubepot-bgutilhttp": {"base_url": [POT_PROVIDER_URL]}}
+    return opts
+
+
+def _ytdl_error_hint(msg, url):
+    low = msg.lower()
+    if _is_bili(url):
+        if "cookies" in low or "login" in low or "会员" in msg or "premium" in low:
+            return "（该内容可能需要登录/大会员，请先扫码登录 B站）"
+        return ""
+    if any(k in low for k in ("timed out", "timeout", "connection", "unreachable",
+                              "getaddrinfo", "name or service", "network is", "proxy")):
+        return ("（连不上 YouTube：国内需要在 docker-compose.yml 里设置 YTDLP_PROXY=http://代理IP:端口，"
+                "并在代理软件里开启「允许局域网连接」）")
+    if "sign in" in low or "not a bot" in low or "403" in low or "po token" in low:
+        return ("（被 YouTube 风控：重启容器更新 yt-dlp；仍不行就启用 compose 里的 bgutil-pot 服务，"
+                "或上传 YouTube cookies.txt）")
+    if "javascript" in low or "js runtime" in low or "deno" in low or "n challenge" in low \
+            or "signature" in low:
+        return "（缺少 JS 运行时：确认 compose 里安装的是 yt-dlp[default,deno]，然后重启容器）"
+    if "cookies" in low or "members" in low or "confirm your age" in low:
+        return "（该内容需要登录，请上传 YouTube cookies.txt）"
+    return ""
+
+
 YTDL_MODES = {
     "audio_best": {"label": "原始最佳音频", "audio": True},
     "mp3":        {"label": "MP3 320k", "audio": True},
@@ -787,7 +916,7 @@ YTDL_MODES = {
 }
 
 
-def _ytdl_opts(task_id, mode):
+def _ytdl_opts(task_id, mode, url):
     def hook(d):
         st = d.get("status")
         if st == "downloading":
@@ -800,18 +929,14 @@ def _ytdl_opts(task_id, mode):
         elif st == "finished":
             set_task(task_id, message="转码/合并中...")
 
-    opts = {
+    opts = _ytdl_base_opts(url)
+    opts.update({
         "outtmpl": os.path.join(DL_DIR, "%(title).150B.%(ext)s"),
         "progress_hooks": [hook],
-        "noplaylist": True,
-        "quiet": True,
-        "no_warnings": True,
         "restrictfilenames": False,
+        "windowsfilenames": True,   # 文件名兼容 SMB / Windows
         "postprocessors": [],
-    }
-    cookie_path = _pick_cookiefile()
-    if cookie_path:
-        opts["cookiefile"] = cookie_path
+    })
 
     if mode == "video":
         opts["format"] = "bestvideo+bestaudio/best"
@@ -837,7 +962,7 @@ def ytdl_worker(task_id, url, mode):
         return
     try:
         set_task(task_id, status="running", message="解析链接...")
-        opts = _ytdl_opts(task_id, mode)
+        opts = _ytdl_opts(task_id, mode, url)
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
             if info.get("_type") == "playlist" and info.get("entries"):
@@ -848,16 +973,91 @@ def ytdl_worker(task_id, url, mode):
         set_task(task_id, status="done", progress=100,
                  message=f"完成（{YTDL_MODES.get(mode, {}).get('label', mode)}）")
     except Exception as e:
-        msg = str(e)
-        if "cookies" in msg.lower() or "login" in msg.lower() or "members" in msg.lower():
-            msg += "（该内容可能需要登录/会员，请配置 cookies.txt）"
-        set_task(task_id, status="error", message=f"下载失败：{msg[:200]}")
+        msg = re.sub(r"\x1b\[[0-9;]*m", "", str(e))
+        msg = re.sub(r";?\s*please report this issue.*$", "", msg, flags=re.S | re.I).strip()
+        msg = msg.replace("ERROR: ", "")[:220] + _ytdl_error_hint(msg, url)
+        set_task(task_id, status="error", message=f"下载失败：{msg}")
+
+
+def _youtube_search(q, page, page_size=20):
+    import yt_dlp
+    opts = _ytdl_base_opts("https://www.youtube.com/")
+    opts.update({"extract_flat": "in_playlist", "skip_download": True})
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(f"ytsearch{page * page_size}:{q}", download=False)
+    out = []
+    for e in (info.get("entries") or [])[(page - 1) * page_size:]:
+        if not e or not e.get("id"):
+            continue
+        out.append({
+            "source": "youtube",
+            "title": e.get("title") or e["id"],
+            "url": f"https://www.youtube.com/watch?v={e['id']}",
+            "uploader": e.get("channel") or e.get("uploader") or "",
+            "duration": int(e.get("duration") or 0),
+            "pic": f"https://i.ytimg.com/vi/{e['id']}/mqdefault.jpg",
+            "plays": e.get("view_count"),
+        })
+    return out
+
+
+@app.get("/api/vsearch")
+def api_vsearch():
+    q = request.args.get("q", "").strip()
+    source = request.args.get("source", "bilibili")
+    page = max(1, int(request.args.get("page", 1) or 1))
+    if not q:
+        return jsonify({"error": "请输入搜索关键词"}), 400
+    try:
+        if source == "youtube":
+            items = _youtube_search(q, page)
+        else:
+            items = bili.search_video(q, page)
+        return jsonify({"items": items})
+    except Exception as e:
+        msg = re.sub(r"\x1b\[[0-9;]*m", "", str(e))
+        msg = re.sub(r";?\s*please report this issue.*$", "", msg, flags=re.S | re.I).strip()
+        hint = _ytdl_error_hint(msg, "https://www.youtube.com/") if source == "youtube" else ""
+        return jsonify({"error": f"搜索失败：{msg.replace('ERROR: ', '')[:200]}{hint}"}), 500
+
+
+THUMB_HOSTS = ("ytimg.com", "ggpht.com", "hdslb.com", "biliimg.com")
+
+
+@app.get("/api/thumb")
+def api_thumb():
+    """封面代理：浏览器不一定能直连 YouTube 图片，B站图片有防盗链，统一由服务器转发。"""
+    u = request.args.get("u", "")
+    host = (urllib.parse.urlparse(u).hostname or "").lower()
+    if not u.startswith("https://") or not any(host == h or host.endswith("." + h)
+                                                for h in THUMB_HOSTS):
+        return "", 404
+    proxies = None
+    if YTDLP_PROXY and ("ytimg" in host or "ggpht" in host or PROXY_FOR_BILIBILI):
+        proxies = {"http": YTDLP_PROXY, "https": YTDLP_PROXY}
+    try:
+        r = requests.get(u, timeout=15, proxies=proxies,
+                         headers={"User-Agent": Bili.UA, "Referer": "https://www.bilibili.com/"})
+        if r.status_code != 200:
+            return "", 404
+        return r.content, 200, {"Content-Type": r.headers.get("Content-Type", "image/jpeg"),
+                                "Cache-Control": "public, max-age=86400"}
+    except Exception:
+        return "", 404
 
 
 @app.get("/api/ytdl/modes")
 def api_ytdl_modes():
+    try:
+        import yt_dlp
+        ver = yt_dlp.version.__version__
+    except Exception:
+        ver = "未安装"
+    import shutil
     return jsonify({"modes": [{"key": k, "label": v["label"]} for k, v in YTDL_MODES.items()],
-                    "has_cookies": _pick_cookiefile() is not None})
+                    "has_cookies": _pick_cookiefile() is not None,
+                    "ytdlp": ver, "deno": bool(shutil.which("deno")),
+                    "proxy": bool(YTDLP_PROXY), "pot": bool(POT_PROVIDER_URL)})
 
 
 @app.post("/api/ytdl")
