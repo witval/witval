@@ -16,7 +16,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     WEBKIT_DISABLE_COMPOSITING_MODE=1 \
     WEBKIT_DISABLE_DMABUF_RENDERER=1 \
     LIBGL_ALWAYS_SOFTWARE=1 \
-    NO_AT_BRIDGE=1
+    NO_AT_BRIDGE=1 \
+    GTK_IM_MODULE=gtk-im-context-simple
 
 COPY fanqie-desktop.deb /tmp/fanqie-desktop.deb
 
@@ -27,6 +28,7 @@ RUN sed -i -E "s#https?://(archive|security)\.ubuntu\.com#http://${APT_MIRROR}#g
       xvfb x11vnc openbox novnc python3-websockify \
       fonts-noto-cjk fonts-noto-color-emoji locales tzdata ca-certificates \
       dbus-x11 xdg-user-dirs gvfs libgl1-mesa-dri procps \
+      fcitx5 fcitx5-chinese-addons fcitx5-frontend-gtk3 \
  && locale-gen zh_CN.UTF-8 \
  && ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html \
  && rm -rf /tmp/fanqie-desktop.deb /var/lib/apt/lists/*
