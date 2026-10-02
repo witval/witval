@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 让番茄下载器窗口无边框、铺满整个网页画面 -->
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <desktops><number>1</number></desktops>
+  <margins><top>0</top><bottom>0</bottom><left>0</left><right>0</right></margins>
+  <applications>
+    <application class="*">
+      <decor>no</decor>
+      <maximized>yes</maximized>
+    </application>
+  </applications>
+</openbox_config>

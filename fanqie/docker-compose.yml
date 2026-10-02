@@ -1,0 +1,20 @@
+# 番茄小说下载器（Tauri 桌面版）—— 群晖 Docker 网页版
+# 桌面程序跑在容器里的虚拟显示器上，通过 noVNC 在浏览器里操作。
+# 第一次需要构建镜像（约 3~6 分钟），之后启动只要几秒。
+services:
+  fanqie:
+    build: .
+    image: fanqie-novel-downloader:latest
+    container_name: fanqie-novel-downloader
+    ports:
+      - "6080:6080"                                    # 浏览器访问 http://群晖IP:6080/
+    volumes:
+      - /volume1/docker/fanqie/config:/config          # 程序设置、登录态、书架、缓存
+      - /volume2/downloads/小说:/downloads             # 小说下载目录（NAS 上的这个文件夹）
+    environment:
+      - TZ=Asia/Shanghai
+      - VNC_PASSWORD=123456          # 网页访问密码，务必改掉；删掉这一行则不需要密码
+      - SCREEN_WIDTH=1280            # 虚拟屏幕分辨率
+      - SCREEN_HEIGHT=800
+    shm_size: "512mb"                # WebKit 渲染需要，太小可能白屏/崩溃
+    restart: unless-stopped
